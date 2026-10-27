@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestion Logitech — Stock & Ventes</title>
+<script src="./xlsx.full.min.js"></script>
+<style>
+  :root { --blue:#2563eb; --blue-dark:#1e40af; --green:#16a34a; --bg:#f1f5f9; --card:#fff; --text:#0f172a; --muted:#64748b; --orange:#ea580c; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+  header { background:linear-gradient(135deg,#1e3a8a,#2563eb); color:#fff; padding:20px 28px; box-shadow:0 4px 14px rgba(0,0,0,.15); }
+  header h1 { font-size:21px; } header p { opacity:.85; font-size:13px; margin-top:3px; }
+  main { max-width:1250px; margin:0 auto; padding:20px 18px 70px; }
+  #warn { display:none; background:#fef3c7; border:1px solid #f59e0b; color:#92400e; padding:10px 14px; border-radius:10px; margin-bottom:14px; font-size:14px; }
+  .dropzone { border:2.5px dashed #94a3b8; border-radius:14px; background:var(--card); padding:30px 20px; text-align:center; cursor:pointer; transition:.2s; }
+  .dropzone:hover,.dropzone.drag { border-color:var(--blue); background:#eff6ff; }
+  .dropzone .icon{font-size:36px} .dropzone h2{font-size:16px;margin:6px 0 3px} .dropzone p{color:var(--muted);font-size:12.5px}
+  .btn { display:inline-block; background:var(--blue); color:#fff; border:none; cursor:pointer; padding:10px 18px; border-radius:9px; font-size:14px; font-weight:600; }
+  .btn:hover { background:var(--blue-dark); }
+  .btn.green { background:var(--green); } .btn.green:hover { background:#15803d; }
+  .btn:disabled { background:#cbd5e1; cursor:not-allowed; }
+  .cards { display:flex; flex-wrap:wrap; gap:10px; margin:2px 0 14px; }
+  .card { background:var(--card); border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px; box-shadow:0 1px 3px rgba(0,0,0,.06); min-width:250px; }
+  .card .head { display:flex; align-items:center; gap:8px; }
+  .card b { font-size:13.5px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .card small { color:var(--muted); font-size:11px; }
+  .card .role { margin-top:6px; }
+  .card select { padding:4px 6px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; max-width:180px; }
+  .card .x { background:#fee2e2; color:#b91c1c; border:none; border-radius:7px; width:26px; height:26px; cursor:pointer; font-weight:700; flex-shrink:0; }
+  .card .x:hover { background:#fecaca; }
+  .badge { font-size:10.5px; padding:2px 7px; border-radius:999px; font-weight:600; display:inline-block; margin-top:4px; }
+  .badge.sales { background:#dcfce7; color:#166534; } .badge.info { background:#dbeafe; color:#1e40af; } .badge.warn { background:#ffedd5; color:#9a3412; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0; }
+  .toolbar input[type=search]{ flex:1; min-width:200px; padding:10px 14px; border:1px solid #cbd5e1; border-radius:9px; font-size:14px; }
+  .toolbar label.chk { font-size:13.5px; color:var(--muted); display:flex; gap:6px; align-items:center; user-select:none; }
+  #stats { font-size:13px; color:var(--muted); }
+  .tablewrap { background:var(--card); border-radius:14px; overflow:auto; box-shadow:0 2px 10px rgba(0,0,0,.07); max-height:68vh; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead th { position:sticky; top:0; background:#1e293b; color:#fff; padding:10px 10px; text-align:left; cursor:pointer; user-select:none; white-space:nowrap; z-index:2; }
+  thead th:hover { background:#334155; }
+  thead th .arr { font-size:9px; opacity:.5; margin-left:4px; } thead th.sorted .arr { opacity:1; color:#7dd3fc; }
+  tbody td { padding:8px 10px; border-bottom:1px solid #f1f5f9; white-space:nowrap; }
+  tbody tr:hover { background:#eff6ff; }
+  td.num,th.num { text-align:center; }
+  td.blank { color:#cbd5e1; text-align:center; }
+  td.conflict { background:#ffedd5; box-shadow:inset 0 0 0 2px var(--orange); font-weight:700; }
+  td.avg { font-weight:600; color:var(--blue-dark); background:#eff6ff; }
+  .empty { text-align:center; padding:40px; color:var(--muted); }
+  .conflictsBox { margin-top:14px; display:none; background:#fff7ed; border:1px solid var(--orange); border-radius:12px; padding:12px 14px; font-size:12.5px; white-space:pre-wrap; max-height:200px; overflow:auto; }
+  .steps { font-size:11.5px; color:var(--muted); margin-top:10px; line-height:1.7; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 Gestion Logitech — Stock & Ventes</h1>
+  <p>Déposez vos fichiers (stock, Mois_08, Mois_09, Mois_10, prix, fournisseur…) → consolidation automatique → export Excel</p>
+</header>
+<main>
+  <div id="warn">⚠️ Bibliothèque Excel non chargée — vérifiez xlsx.full.min.js (ou connexion internet pour le secours).</div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="dropzone" id="dz">
+    <div class="icon">📥</div>
+    <h2>Déposez ici vos fichiers Excel</h2>
+    <p>Le système détecte automatiquement : Stock · Ventes mensuelles · Prix de vente/achat · Quantité fournisseur</p>
+    <button class="btn" type="button">Choisir des fichiers (.xlsx)</button>
+    <input type="file" id="fi" accept=".xlsx,.xls" multiple>
+  </div>
+
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="🔎 Rechercher un EAN, code ou produit…">
+    <span id="stats"></span>
+    <button class="btn green" id="exportBtn" disabled>⬇️ Exporter le fichier Maître Excel</button>
+  </div>
+
+  <div class="tablewrap" id="tblwrap">
+    <div class="empty">Aucun fichier. Déposez vos Excel ci-dessus 👆<br>
+    <span class="steps">Colonnes finales : Code · EAN · Nom · Mon Stock · Quantité Mois 1 · Mois 2 · Mois 3 · Moyenne des Mois · Prix de Vente · Prix d'Achat · Quantité Fournisseur</span></div>
+  </div>
+
+  <div class="conflictsBox" id="confBox"></div>
+</main>
+
+<script>
+(function () {
+  if (typeof XLSX !== 'undefined') document.getElementById('warn').style.display = 'none';
+  else {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+    s.onload = () => document.getElementById('warn').style.display = 'none';
+    document.head.appendChild(s);
+  }
+
+  /* ============ CONSTANTES ============ */
+  const FIELDS = [
+    { id:'code',    label:"Code",               multi:'sum', regex:/code|ref|sku|artikel|item/i, ban:/ean|barcode|gencod/i },
+    { id:'ean',     label:"EAN",                multi:'first', regex:/ean|barcode|code.?barre|gencod|gtin/i },
+    { id:'nom',     label:"Nom",                multi:'first', regex:/nom|d[ée]signation|libell[ée]|name|description|produit|product/i },
+    { id:'stock',   label:"Mon Stock",          multi:'max', regex:/stock|inventaire|dispo|on.?hand|available|en magasin/i, ban:/fournisseur|supplier/i },
+    { id:'m1',      label:"Quantité Mois 1",    multi:'sum' },
+    { id:'m2',      label:"Quantité Mois 2",    multi:'sum' },
+    { id:'m3',      label:"Quantité Mois 3",    multi:'sum' },
+    { id:'pv',      label:"Prix de Vente",      multi:'first', regex:/(prix|price|pu|p\.u\.|tarif)[^\n]*(vente|sell|sale|vendre)|(vente|sale)[^\n]*(prix|price)|^pv/i, ban:/achat|cost|achat|purchase/i },
+    { id:'pa',      label:"Prix d'Achat",       multi:'first', regex:/(prix|price|cout|co[ûu]t|cost)[^\n]*(achat|cost|buy|purchase|fournisseur)|(achat|purchase)[^\n]*(prix|price|cout|cost)|^pa/i, ban:/vente|sell/i },
+    { id:'fourn',   label:"Quantité Fournisseur", multi:'max', regex:/(quantit|qt|qty|qte)[^\n]*fournisseur|fournisseur[^\n]*(quantit|qt|qty|qte|stock)|(supplier)[^\n]*(qty|quantity|stock)/i }
+  ];
+  const MONTH_FILE_RE = /mois[\s_.-]*(\d{1,2})|month[\s_.-]*(\d{1,2})/i;
+  const zeroIf = v => (typeof v === 'number') ? v : (String(v).trim() === '' ? null : v);
+
+  /* ============ STATE ============ */
+  let files = [];   // {id, name, rows, cols[], mapping{target: colIdx}, role, month(n or null), eanColOverride}
+  let seq = 0;
+  let sortKey = 'ean', sortDir = 1;
+  let master = [];
+  let conflicts = [];
+
+  const dz = document.getElementById('dz'), fi = document.getElementById('fi');
+  const cards = document.getElementById('cards'), tblwrap = document.getElementById('tblwrap');
+  const stats = document.getElementById('stats'), searchEl = document.getElementById('search');
+  const exportBtn = document.getElementById('exportBtn'), confBox = document.getElementById('confBox');
+
+  /* ============ dropzone ============ */
+  dz.addEventListener('click', () => fi.click());
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('drag');
+    handleFiles(e.dataTransfer.files);
+  });
+  fi.addEventListener('change', () => { handleFiles(fi.files); fi.value = ''; });
+
+  function handleFiles(list) {
+    Array.from(list).filter(f => /\.(xlsx|xls)$/i.test(f.name)).forEach(f => {
+      const r = new FileReader();
+      r.onload = e => { try { ingest(f.name, new Uint8Array(e.target.result)); } catch (err) { alert(f.name + ' → ' + err.message); } };
+      r.readAsArrayBuffer(f);
+    });
+  }
+
+  /* ============ PARSING & AUTO-MAPPING ============ */
+  function detectHeaderRow(rows) {
+    let best = 0, score = -1;
+    for (let i = 0; i < Math.min(rows.length, 6); i++) {
+      const filled = rows[i].filter(c => String(c).trim() !== '').length;
+      if (filled > score) { score = filled; best = i; }
+    }
+    return best;
+  }
+
+  function norm(s) { return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
+
+  function autoMap(headers, name, fileRole) {
+    const H = headers.map(norm);
+    const map = {};
+    // role mois → colonnes m1/m2/m3 = qt ième
+    const salesColIdx = H.map((h, i) => ({ h, i })).find(o => /qt|quant|sold/.test(o.h));
+    if (fileRole === 'sales') {
+      map['nom'] = H.findIndex(h => /produit|product|nom|designation|article/.test(h));
+      if (map['nom'] < 0) map['nom'] = 0;
+      map['m1'] = salesColIdx ? salesColIdx.i : 1;
+    } else {
+      FIELDS.forEach(f => {
+        if (['m1','m2','m3'].includes(f.id) || f.id === 'nom') return;
+        let idx = -1;
+        for (const cand of bestColumns(headers, f)) { idx = cand; break; }
+        map[f.id] = idx;
+      });
+      // ean fallback: extract from nom with brackets
+      const nomIdx = H.findIndex(h => /produit|product|nom|designation|article|model/.test(h) || (H.length ? 0 : -1));
+      map['nom'] = nomIdx >= 0 ? nomIdx : 0;
+    }
+    return map;
+  }
+
+  // returns ordered candidate columns for a target field
+  function bestColumns(headers, f) {
+    if (!f.regex) return [];
+    const H = headers.map(norm);
+    const cands = [];
+    H.forEach((h, i) => {
+      if (f.ban && f.ban.test(h)) return;
+      if (f.regex.test(h)) cands.push(i);
+    });
+    return cands;
+  }
+
+  function roleOfFile(name, headers) {
+    const m = name.match(MONTH_FILE_RE);
+    if (m && /qt|quant/i.test(headers.join(' ')) ) return { role:'sales', month: parseInt(m[1] || m[2], 10) };
+    if (m) return { role:'sales', month: parseInt(m[1] || m[2], 10) };
+    const H = headers.join(' ').toLowerCase();
+    if (/fournisseur|supplier/.test(H)) return { role:'fourn', month:null };
+    if (/(prix|price)/.test(H)) return { role:'prices', month:null };
+    if (/(stock|inventaire|dispo)/.test(H)) return { role:'stock', month:null };
+    return { role:'info', month:null };
+  }
+
+  function ingest(name, bytes) {
+    const wb = XLSX.read(bytes, { type:'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:'' });
+    if (!rows.length) throw new Error('feuille vide');
+    const hIdx = detectHeaderRow(rows);
+    const headers = rows[hIdx].map(c => String(c).trim());
+    const dataRows = rows.slice(hIdx + 1).filter(r => r.some(c => String(c).trim() !== ''));
+    const { role, month } = roleOfFile(name, headers);
+    const mapping = autoMap(headers, name, role);
+    // cleanup keys
+    Object.keys(mapping).forEach(k => { if (!(mapping[k] >= 0)) delete mapping[k]; });
+    files.push({ id:++seq, name:name.replace(/\.(xlsx|xls)$/i,''), rows:dataRows, headers, mapping, role, month, fRole:role });
+    recalc();
+  }
+
+  /* ============ slots des mois: chronologique → m1,m2,m3 ============ */
+  function monthSlots() {
+    const sales = files.filter(f => f.role === 'sales').sort((a,b) => (a.month ?? 99) - (b.month ?? 99));
+    const slots = { m1:[], m2:[], m3:[] };
+    sales.forEach((f, i) => { if (i < 3) slots[Object.keys(slots)[i]] = slots[Object.keys(slots)[i]].concat(f); });
+    return slots;
+  }
+
+  /* ============ extraction d'une clé + valeur par fichier ============ */
+  function eanFromText(txt) { const m = String(txt).match(/\[(\d+)\]/); return m ? m[1] : null; }
+
+  function addItem(store, field, rawVal, fileId, fname) {
+    if (typeof rawVal === 'number' && !isFinite(rawVal)) rawVal = null;
+    if (rawVal === '' || rawVal == null) return;
+    if (!store[field]) store[field] = { items:[] };
+    store[field].items.push({ v: rawVal, file: fname, fileId });
+  }
+
+  function recalc() {
+    // pré-calcul de tous les produits (clé = EAN détecté sinon Code sinon nom du produit)
+    const products = new Map();
+    const slots = monthSlots();
+    files.forEach(f => {
+      const mFirst = ['m1','m2','m3'].find(t => Object.keys(f.mapping).includes(t));
+      // building per-row info
+      f.rows.forEach(r => {
+        // nom
+        let nom = f.mapping['nom'] != null ? String(r[f.mapping['nom']] == null ? '' : r[f.mapping['nom']]).trim() : '';
+        let ean = f.mapping['ean'] != null ? String(r[f.mapping['ean']]).replace(/\[\]/g,'').trim() : null;
+        if (!ean && nom) ean = eanFromText(nom);
+        if (ean && nom) nom = norm(nom) ? nom.replace(/\[\d+\]/, '').trim() : nom;
+        let code = f.mapping['code'] != null ? String(r[f.mapping['code']]).trim() : '';
+        const key = ean || code || nom;
+        if (!key) return;
+        if (!products.has(key)) products.set(key, { ean, code, nom: nom.replace(/\[\d+\]/, '').trim() || nom, data:{} });
+        const P = products.get(key);
+        if (ean) P.ean = P.ean || ean;
+        if (code) P.code = P.code || code;
+        if (nom && !P.nom) P.nom = nom.replace(/\[\d+\]/, '').trim() || nom;
+
+        // sales files: add the quantity ONCE per row into its month slot
+        if (f.role === 'sales') {
+          const idx = f.mapping['m1'] != null ? f.mapping['m1'] : null;
+          if (idx != null) {
+            const slot = Object.keys(slots).find(s => slots[s].some(sf => sf.id === f.id));
+            if (slot) addItem(P.data, slot, zeroIf(r[idx]), f.id, f.name);
+          }
+        } else {
+          // non-sales files: read every mapped target field
+          FIELDS.forEach(fld => {
+            if (['m1','m2','m3'].includes(fld.id)) return;
+            const idx = f.mapping[fld.id];
+            if (idx == null) return;
+            addItem(P.data, fld.id, zeroIf(r[idx]), f.id, f.name);
+          });
+        }
+      });
+    });
+
+    const masterRows = [];
+    conflicts = [];
+    products.forEach((P, key) => {
+      const row = { key, ean:P.ean || '', code:P.code || '', nom:P.nom, vals:{}, conflictCells:{} };
+      FIELDS.forEach(fld => {
+        const entry = P.data[fld.id];
+        if (!entry) { row.vals[fld.id] = null; return; }
+        const nonEmpty = entry.items.filter(x => x.v !== null && String(x.v).trim() !== '');
+        if (!nonEmpty.length) { row.vals[fld.id] = null; return; }
+        // distinct values
+        const distinct = [...new Set(nonEmpty.map(x => String(x.v)))];
+        if (distinct.length > 1) {
+          conflicts.push({ key, ean:P.ean, field:fld.label, values: distinct.map(d => d + ' (' + [...nonEmpty.filter(x=>String(x.v)==d).map(x=>x.file)].join(', ') + ')').join('  ·  ') });
+          row.conflictCells[fld.id] = true;
+        }
+        // strategy
+        let val;
+        if (fld.multi === 'sum') {
+          val = nonEmpty.reduce((a, x) => a + (parseFloat(String(x.v).replace(',', '.')) || 0), 0);
+          val = isFinite(val) ? val : nonEmpty[0].v;
+        } else if (fld.multi === 'max') {
+          val = Math.max(...nonEmpty.map(x => parseFloat(String(x.v).replace(',','.')) || -Infinity));
+          if (!isFinite(val)) val = nonEmpty[0].v;
+        } else {
+          // 'first' : priorité au fichier dédicacé au champ
+          let pool = nonEmpty;
+          if (fld.id === 'pv' || fld.id === 'pa') {
+            const dedicated = nonEmpty.filter(x => (files.find(f => f.id === x.fileId) || {}).role === 'prices');
+            if (dedicated.length) pool = dedicated;
+          }
+          if (fld.id === 'stock') {
+            const dedicated = nonEmpty.filter(x => (files.find(f => f.id === x.fileId) || {}).role === 'stock');
+            if (dedicated.length) pool = dedicated;
+          }
+          val = pool[0].v;
+        }
+        row.vals[fld.id] = val;
+      });
+      // moyenne
+      const m1 = row.vals.m1, m2 = row.vals.m2, m3 = row.vals.m3;
+      row.avg = ((m1 ?? 0) + (m2 ?? 0) + (m3 ?? 0)) / 3;
+      masterRows.push(row);
+    });
+    master = masterRows;
+    render();
+  }
+
+  /* ============ RENDU ============ */
+  function render() {
+    renderCards();
+    if (!files.length) {
+      tblwrap.innerHTML = '<div class="empty">Aucun fichier. Déposez vos Excel ci-dessus 👆</div>';
+      exportBtn.disabled = true; stats.textContent = ''; confBox.style.display = 'none';
+      return;
+    }
+    exportBtn.disabled = false;
+
+    const q = (searchEl.value || '').trim().toLowerCase();
+    let view = master.filter(r => !q || String(r.ean).toLowerCase().includes(q) || String(r.code).toLowerCase().includes(q) || r.nom.toLowerCase().includes(q));
+
+    view = view.slice().sort((a,b) => {
+      const k = sortKey;
+      let va, vb;
+      if (k === 'ean') { va = a.ean; vb = b.ean; }
+      else if (k === 'code') { va = String(a.code); vb = String(b.code); }
+      else if (k === 'nom') { va = a.nom.toLowerCase(); vb = b.nom.toLowerCase(); }
+      else if (k === 'avg') { va = a.avg; vb = b.avg; }
+      else { va = a.vals[k] ?? -1E9; vb = b.vals[k] ?? -1E9; return sortDir * ((va < vb) ? -1 : (va > vb ? 1 : 0)); }
+      return sortDir * ((va || '').toString().localeCompare((vb || '').toString()));
+    });
+
+    const slots = monthSlots();
+    const slotLabels = { m1:[], m2:[], m3:[] };
+    Object.keys(slots).forEach(s => slots[s].forEach(f => slotLabels[s].push(f.name)));
+
+    let html = `<table><thead><tr>`;
+    const H = ['code','ean','nom','stock','m1','m2','m3','avg','pv','pa','fourn'];
+    const labels = { code:'Code', ean:'EAN', nom:'Nom', stock:'Mon Stock', m1:'Quantité Mois 1' + lab(slotLabels.m1), m2:'Quantité Mois 2' + lab(slotLabels.m2), m3:'Quantité Mois 3' + lab(slotLabels.m3), avg:'Moyenne des Mois', pv:'Prix de Vente', pa:"Prix d'Achat", fourn:'Quantité Fournisseur' };
+    H.forEach(k => { html += `<th class="${['stock','m1','m2','m3','pv','pa','fourn','avg'].includes(k)?'num':''}" data-k="${k}">${labels[k]}<span class="arr">▲▼</span></th>`; });
+    html += `</tr></thead><tbody>`;
+
+    view.forEach(r => {
+      html += `<tr><td class="num">${esc(r.code)}</td><td class="num">${esc(r.ean)}</td><td>${esc(r.nom)}</td>`;
+      ['stock','m1','m2','m3'].forEach(k => {
+        const v = r.vals[k];
+        html += `<td class="${r.conflictCells[k] ? 'num conflict' : (v == null ? 'blank' : 'num')}">${v == null ? '—' : fmtN(v)}</td>`;
+      });
+      html += `<td class="num avg">${fmtN(r.avg, 1)}</td>`;
+      ['pv','pa','fourn'].forEach(k => {
+        const v = r.vals[k];
+        const isPrice = (k === 'pv' || k === 'pa');
+        html += `<td class="${r.conflictCells[k] ? 'num conflict' : (v == null ? 'blank' : 'num')}">${v == null ? '—' : fmtN(v, 2)}</td>`;
+      });
+      html += `</tr>`;
+    });
+    html += `</tbody></table>`;
+    tblwrap.innerHTML = html;
+    stats.textContent = `${view.length} produits / ${master.length} au total`;
+
+    confBox.style.display = conflicts.length ? 'block' : 'none';
+    confBox.textContent = '⚠️ CONFLITS DÉTECTÉS (' + conflicts.length + ') — cellules marquées en orange :\n' + conflicts.slice(0, 40).map(c => `• ${c.ean || c.key} — ${c.field} : ${c.values}`).join('\n') + (conflicts.length > 40 ? '\n… v. export "Conflits" sheet' : '');
+
+    tblwrap.querySelectorAll('th').forEach(th => {
+      if (th.dataset.k === sortKey) th.classList.add('sorted');
+      th.onclick = () => {
+        if (sortKey === th.dataset.k) sortDir = -sortDir;
+        else { sortKey = th.dataset.k; sortDir = (th.dataset.k === 'ean' || th.dataset.k === 'nom' || th.dataset.k === 'code') ? 1 : -1; }
+        render();
+      };
+    });
+  }
+
+  function lab(nameList) { return nameList.length ? '<br><span style="font-size:9.5px;opacity:.8">⤷ ' + esc(nameList.join(', ')) + '</span>' : ''; }
+  function fmtN(v, d) { if (typeof v !== 'number') return v; return d === 2 ? v.toFixed(2) : (d === 1 ? (Number.isInteger(v) ? String(v) : v.toFixed(1)) : String(v)); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&','<':'<','>':'>','"':'"'}[c])); }
+
+  /* ============ cartes fichiers ============ */
+  function renderCards() {
+    cards.innerHTML = '';
+    files.forEach(f => {
+      const el = document.createElement('div');
+      el.className = 'card';
+      let roleBadge = '', roleLabel = '';
+      if (f.role === 'sales') { roleBadge = `<span class="badge sales">Mois ${String(f.month ?? '?').padStart(2, '0')} → Ventas</span>`; roleLabel = `Mois ${String(f.month ?? '?').padStart(2, '0')}`; }
+      else { roleBadge = `<span class="badge ${f.role==='info'?'info':'warn'}">${{ stock:'📦 Stock', prices:'💰 Prix', fourn:'🚚 Fournisseur', info:'ℹ️ Info produit' }[f.role]}</span>`; }
+      const mapList = Object.entries(f.mapping).map(([t, i]) => `${FIELDS.find(x=>x.id===t).label} → «${f.headers[i]}»`).slice(0, 4).join(' · ');
+      el.innerHTML = `
+        <div class="head">
+          <div style="min-width:140px"><b>${esc(f.name)}</b><small>${f.rows.length} lignes · ${mapList ? esc(mapList) : 'sans mapping'}</small></div>
+          <button class="x" title="Retirer">✕</button>
+        </div>
+        ${roleBadge}`;
+      el.querySelectorAll('.x').forEach(b => b.onclick = () => { files = files.filter(x => x.id !== f.id); recalc(); });
+      cards.appendChild(el);
+    });
+  }
+
+  /* ============ EXPORT EXCEL ============ */
+  exportBtn.onclick = () => {
+    const H = ['Code','EAN','Nom','Mon Stock','Quantité Mois 1','Quantité Mois 2','Quantité Mois 3','Moyenne des Mois',"Prix de Vente","Prix d'Achat",'Quantité Fournisseur'];
+    const aoa = [H];
+    master.forEach((r, iRow) => {
+      aoa.push([
+        r.code || '', String(r.ean || ''), r.nom || '',
+        r.vals.stock ?? '', r.vals.m1 ?? '', r.vals.m2 ?? '', r.vals.m3 ?? '',
+        { f: `(E${iRow+2}+F${iRow+2}+G${iRow+2})/3` },
+        r.vals.pv ?? '', r.vals.pa ?? '', r.vals.fourn ?? ''
+      ]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // EAN en texte
+    for (let i = 1; i <= master.length; i++) { const c = ws['B' + (i + 1) - 1 + 1]; if (c) { c.t = 's'; } }
+    ws['!cols'] = [{ wch:14 },{ wch:16 },{ wch:38 },{ wch:10 },{ wch:12 },{ wch:12 },{ wch:12 },{ wch:12 },{ wch:12 },{ wch:12 },{ wch:14 }];
+    ws['!autofilter'] = { ref: `A1:K${master.length + 1}` };
+    // fusion titre
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Master');
+    // feuille conflits
+    if (conflicts.length) {
+      const ca = [['EAN','Code','Champ','Valeurs trouvées']];
+      conflicts.forEach(c => ca.push([c.ean||'', c.key, c.field, c.values]));
+      const cws = XLSX.utils.aoa_to_sheet(ca);
+      cws['!cols'] = [{wch:16},{wch:14},{wch:18},{wch:60}];
+      XLSX.utils.book_append_sheet(wb, cws, 'Conflits');
+    }
+    // feuille mapping
+    const ma = [['Fichier','Rôle','Mois','Mapping détecté']];
+    files.forEach(f => ma.push([ f.name, f.role, f.month ?? '', Object.entries(f.mapping).map(([t,i]) => `${t}→${f.headers[i]}`).join(' ; ') ]));
+    const mws = XLSX.utils.aoa_to_sheet(ma);
+    mws['!cols'] = [{wch:22},{wch:10},{wch:8},{wch:70}];
+    XLSX.utils.book_append_sheet(wb, mws, 'Mapping');
+    XLSX.writeFile(wb, 'Gestion_Logitech_Master.xlsx');
+  };
+
+  searchEl.addEventListener('input', render);
+  render();
+})();
+</script>
+</body>
+</html>
